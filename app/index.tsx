@@ -1,6 +1,7 @@
 import { Text, View, TextInput, FlatList, TouchableOpacity } from "react-native";
 import { Tool, useCactusLM, type Message } from 'cactus-react-native';
 import { useEffect, useState } from "react";
+import { initDatabase, writeEmbedding, searchSimilar } from "@/utils/database";
 
 
 const tools: Tool[] = [
@@ -42,7 +43,42 @@ const tools: Tool[] = [
             required: ['email', 'subject', 'message'],
         },
     },
+    {
+        type: 'function',
+        name: 'store_memory',
+        description: 'Store important information as a memory for later retrieval. Before calling this, refine the content to be clear, concise, and searchable.',
+        parameters: {
+            type: 'object',
+            properties: {
+                content: {
+                    type: 'string',
+                    description: 'The refined and precise content to store. Be explicit and include relevant context.',
+                },
+                tags: {
+                    type: 'string',
+                    description: 'Optional comma-separated tags for categorization',
+                },
+            },
+            required: ['content'],
+        },
+    },
+    {
+        type: 'function',
+        name: 'recall_memory',
+        description: 'Search for relevant memories based on a query',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: {
+                    type: 'string',
+                    description: 'What to search for in stored memories',
+                },
+            },
+            required: ['query'],
+        },
+    },
 ];
+
 
 
 
@@ -54,8 +90,6 @@ export default function App() {
 
     });
     useEffect(() => {
-
-
         // Download the model if not already available
         if (!cactusLM.isDownloaded) {
             cactusLM.download();
@@ -71,7 +105,7 @@ export default function App() {
         );
     }
 
-    const handleFunctionCall = (name: string, args: Record<string, any>): string => {
+    const handleFunctionCall = async (name: string, args: Record<string, any>): Promise<string> => {
         switch (name) {
             case 'get_weather':
                 const location = args.location as string;
@@ -81,6 +115,23 @@ export default function App() {
                 const subject = args.subject as string;
                 const message = args.message as string;
                 return `Email sent to ${email} with subject "${subject}"`;
+            case 'store_memory':
+                const content = args.content as string;
+                const tags = args.tags as string | undefined;
+                const embeddingResult = await cactusLM.embed({ text: content });
+                const id = await writeEmbedding(embeddingResult.embedding, { content, tags });
+                return `Memory stored successfully with ID: ${id}`;
+            case 'recall_memory':
+                const query = args.query as string;
+                const limit = (args.limit as number) || 5;
+                const queryEmbeddingResult = await cactusLM.embed({ text: query });
+                const results = await searchSimilar(queryEmbeddingResult.embedding, limit);
+                if (results.length === 0) {
+                    return 'No relevant memories found.';
+                }
+                return results.map((r, i) =>
+                    `${i + 1}. ${r.metadata.content} (distance: ${r.distance.toFixed(3)})`
+                ).join('\n');
             default:
                 return `Unknown function: ${name}`;
         }
@@ -115,6 +166,19 @@ export default function App() {
                         2. send_email: Send an email to someone
                            - Parameters: email (email address), subject (email subject), message (email message)
                            - Example: "Send an email to john@example.com with subject 'Meeting' and message 'Let's meet tomorrow'"
+                        
+                        3. store_memory: Store important information for later retrieval
+                           - Before calling, refine content to be clear and searchable
+                           - Parameters: content (precise information), tags (optional)
+                           - Example: "Remember that John's birthday is on March 15th"
+                        
+                        4. recall_memory: Search stored memories
+                           - Parameters: query (what to search for), limit (optional, default 5)
+                           - Example: "When is John's birthday?"
+                        
+                        IMPORTANT: When using tools, you MUST generate all required parameters yourself based on the conversation context. 
+                        DO NOT ask the user to provide tool parameters. Extract information from the user's message and generate the parameters autonomously.
+                        For example, if user says "remember my favorite color is blue", immediately call store_memory with content="User's favorite color is blue" without asking for confirmation or additional details.
                         `
                         },
                         ...messages, { role: 'user', content: input }], tools
@@ -125,7 +189,7 @@ export default function App() {
 
                 if (message.functionCalls && message.functionCalls.length > 0) {
                     for (const call of message.functionCalls) {
-                        const result = handleFunctionCall(call.name, call.arguments);
+                        const result = await handleFunctionCall(call.name, call.arguments);
                         setMessages(messages => [
                             ...messages,
                             {

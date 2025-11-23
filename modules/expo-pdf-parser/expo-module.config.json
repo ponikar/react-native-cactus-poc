@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ExpoPdfParserModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.pdfparser.ExpoPdfParserModule"]
+  }
+}

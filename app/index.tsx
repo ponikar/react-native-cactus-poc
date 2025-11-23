@@ -2,6 +2,8 @@ import { Text, View, TextInput, FlatList, TouchableOpacity } from "react-native"
 import { Tool, useCactusLM, type Message } from 'cactus-react-native';
 import { useEffect, useState } from "react";
 import { initDatabase, writeEmbedding, searchSimilar } from "@/utils/database";
+import { Ionicons } from '@expo/vector-icons';
+import { pickPDFFile, parsePDF } from "@/utils/pdfUtils";
 
 
 const tools: Tool[] = [
@@ -213,6 +215,31 @@ export default function App() {
         }
     };
 
+    const handlePickPDF = async () => {
+        try {
+            const file = await pickPDFFile();
+            if (file) {
+                const result = await parsePDF(file.uri);
+                setMessages(messages => [
+                    ...messages,
+                    {
+                        role: "user",
+                        content: `[PDF: ${file.name}]\n${result.text.substring(0, 500)}${result.text.length > 500 ? '...' : ''}`
+                    }
+                ]);
+            }
+        } catch (error) {
+            console.error('Error picking/parsing PDF:', error);
+            setMessages(messages => [
+                ...messages,
+                {
+                    role: "assistant",
+                    content: `Error processing PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
+                }
+            ]);
+        }
+    };
+
     return (
         <View style={{ flex: 1, padding: 20 }}>
             <FlatList
@@ -224,7 +251,21 @@ export default function App() {
                 )}
                 keyExtractor={(_, index) => index.toString()}
             />
-            <View style={{ flexDirection: "row", marginTop: 10 }}>
+            <View style={{ flexDirection: "row", marginTop: 10, alignItems: "center" }}>
+                <TouchableOpacity
+                    onPress={handlePickPDF}
+                    style={{
+                        padding: 10,
+                        borderRadius: 5,
+                        borderWidth: 1,
+                        borderColor: "#ccc",
+                        marginRight: 8,
+                        justifyContent: "center",
+                        alignItems: "center"
+                    }}
+                >
+                    <Ionicons name="attach" size={24} color="#007AFF" />
+                </TouchableOpacity>
                 <TextInput
                     style={{ flex: 1, borderWidth: 1, borderColor: "#ccc", padding: 10, borderRadius: 5 }}
                     value={input}

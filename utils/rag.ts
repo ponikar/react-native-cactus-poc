@@ -19,19 +19,17 @@ export class SimpleRAG {
     };
 
     this.vectorStore = new OPSQLiteVectorStore({
-      name: "rag-db",
+      name: "rag-db-v3", // Changed name to force recreation with correct dimensions
       embeddings,
     });
 
   }
-
   async init() {
     this.vectorStore?.load();
   }
 
-
   async addDocument(text: string, metadata?: Record<string, any>): Promise<number> {
-    const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 500, chunkOverlap: 100 });
+    const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1024, chunkOverlap: 100 });
     const chunks = await splitter.splitText(text);
     const store = this.vectorStore;
 

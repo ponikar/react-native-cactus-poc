@@ -60,8 +60,13 @@ export default function App() {
 
         // Initialize RAG with a new CactusLM instance
         if (cactusLM.isDownloaded && !rag) {
-            const lm = new (require('cactus-react-native').CactusLM)();
-            setRag(new SimpleRAG(lm));
+            (async () => {
+                const lm = new (require('cactus-react-native').CactusLM)();
+                const rag = new SimpleRAG(lm)
+                await rag.init();
+                setRag(rag);
+            })()
+
         }
     }, [cactusLM.isDownloaded]);
 
@@ -119,21 +124,13 @@ export default function App() {
                             role: "system", content: `
                         Use tools when needed: 
                         You have access to the following tools:
-                        
-                        1. get_weather: Get current weather for a location
-                           - Parameters: location (city name)
-                           - Example: "What's the weather in San Francisco?"
-                        
-                        2. send_email: Send an email to someone
-                           - Parameters: email (email address), subject (email subject), message (email message)
-                           - Example: "Send an email to john@example.com with subject 'Meeting' and message 'Let's meet tomorrow'"
-                        
-                        3. store_memory: Store important information for later retrieval
+                         
+                        1. store_memory: Store important information for later retrieval
                            - Before calling, refine content to be clear and searchable
                            - Parameters: content (precise information), tags (optional)
                            - Example: "Remember that John's birthday is on March 15th"
                         
-                        4. recall_memory: Search stored memories
+                        2. recall_memory: Search stored memories
                            - Parameters: query (what to search for), limit (optional, default 5)
                            - Example: "When is John's birthday?"
                         
@@ -179,6 +176,7 @@ export default function App() {
             const file = await pickPDFFile();
             if (file) {
                 const result = await parsePDF(file.uri);
+                rag?.addDocument(result.text, { tags: file.name });
                 setMessages(messages => [
                     ...messages,
                     {

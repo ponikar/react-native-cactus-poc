@@ -42,12 +42,6 @@
         }
       ],
       [
-        "expo-sqlite",
-        {
-          "withSQLiteVecExtension": true
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "android": {

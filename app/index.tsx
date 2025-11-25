@@ -1,50 +1,12 @@
 import { Text, View, TextInput, FlatList, TouchableOpacity } from "react-native";
 import { Tool, useCactusLM, type Message } from 'cactus-react-native';
 import { useEffect, useState } from "react";
-import { initDatabase, writeEmbedding, searchSimilar } from "@/utils/database";
 import { Ionicons } from '@expo/vector-icons';
 import { pickPDFFile, parsePDF } from "@/utils/pdfUtils";
+import { SimpleRAG } from "@/utils/rag";
 
 
 const tools: Tool[] = [
-    {
-        type: 'function',
-        name: 'get_weather',
-        description: 'Get current weather for a location',
-        parameters: {
-            type: 'object',
-            properties: {
-                location: {
-                    type: 'string',
-                    description: 'City name',
-                },
-            },
-            required: ['location'],
-        },
-    },
-    {
-        type: 'function',
-        name: 'send_email',
-        description: 'Send an email to someone',
-        parameters: {
-            type: 'object',
-            properties: {
-                email: {
-                    type: 'string',
-                    description: 'Email address',
-                },
-                subject: {
-                    type: 'string',
-                    description: 'Email subject',
-                },
-                message: {
-                    type: 'string',
-                    description: 'Email message',
-                },
-            },
-            required: ['email', 'subject', 'message'],
-        },
-    },
     {
         type: 'function',
         name: 'store_memory',
@@ -87,16 +49,21 @@ const tools: Tool[] = [
 export default function App() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
+    const cactusLM = useCactusLM();
+    const [rag, setRag] = useState<SimpleRAG | null>(null);
 
-    const cactusLM = useCactusLM({
-
-    });
     useEffect(() => {
         // Download the model if not already available
         if (!cactusLM.isDownloaded) {
             cactusLM.download();
         }
-    }, []);
+
+        // Initialize RAG with a new CactusLM instance
+        if (cactusLM.isDownloaded && !rag) {
+            const lm = new (require('cactus-react-native').CactusLM)();
+            setRag(new SimpleRAG(lm));
+        }
+    }, [cactusLM.isDownloaded]);
 
 
     if (cactusLM.isDownloading) {
@@ -109,30 +76,22 @@ export default function App() {
 
     const handleFunctionCall = async (name: string, args: Record<string, any>): Promise<string> => {
         switch (name) {
-            case 'get_weather':
-                const location = args.location as string;
-                return `Weather in ${location}: Sunny, 72°F`;
-            case 'send_email':
-                const email = args.email as string;
-                const subject = args.subject as string;
-                const message = args.message as string;
-                return `Email sent to ${email} with subject "${subject}"`;
             case 'store_memory':
+                if (!rag) return 'RAG not initialized';
                 const content = args.content as string;
                 const tags = args.tags as string | undefined;
-                const embeddingResult = await cactusLM.embed({ text: content });
-                const id = await writeEmbedding(embeddingResult.embedding, { content, tags });
-                return `Memory stored successfully with ID: ${id}`;
+                const count = await rag.addDocument(content, { tags });
+                return `Memory stored successfully (${count} chunks)`;
             case 'recall_memory':
+                if (!rag) return 'RAG not initialized';
                 const query = args.query as string;
                 const limit = (args.limit as number) || 5;
-                const queryEmbeddingResult = await cactusLM.embed({ text: query });
-                const results = await searchSimilar(queryEmbeddingResult.embedding, limit);
+                const results = await rag.search(query, limit);
                 if (results.length === 0) {
                     return 'No relevant memories found.';
                 }
                 return results.map((r, i) =>
-                    `${i + 1}. ${r.metadata.content} (distance: ${r.distance.toFixed(3)})`
+                    `${i + 1}. ${r.metadata?.content || 'No content'} (distance: ${r.distance.toFixed(3)})`
                 ).join('\n');
             default:
                 return `Unknown function: ${name}`;
